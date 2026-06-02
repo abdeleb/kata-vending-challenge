@@ -1,0 +1,44 @@
+{
+    "name": "vending-machine/vending-machine",
+    "description": "A vending machine modeled as a pure domain core with a CLI adapter (hexagonal architecture).",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "8.3.*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "VendingMachine\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "VendingMachine\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.3.0"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "stan": "phpstan analyse",
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "ci": [
+            "@cs",
+            "@stan",
+            "@test"
+        ]
+    }
+}
