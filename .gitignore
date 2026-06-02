@@ -1,0 +1,24 @@
+# Internal planning / interview-prep docs — NEVER part of the submission.
+# Ignored from commit 1: they carry the challenge context and must not leak via `git add -A`.
+/PLAN*.md
+
+# Composer-managed dependencies (composer.lock IS committed — see below).
+/vendor/
+
+# Tooling caches
+/.phpunit.cache/
+/.phpunit.result.cache
+/.phpstan.cache/
+/.php-cs-fixer.cache
+
+# Build / coverage artifacts
+/build/
+/coverage/
+
+# OS / editor noise
+.DS_Store
+*.swp
+/.idea/
+/.vscode/
+
+# NOTE: composer.lock is intentionally NOT ignored — it is committed for reproducible installs.

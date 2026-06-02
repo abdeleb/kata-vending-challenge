@@ -1,0 +1,9 @@
+# Keep the build context small and prevent internal docs from entering any image layer.
+.git/
+vendor/
+PLAN*.md
+.phpunit.cache/
+.phpstan.cache/
+.php-cs-fixer.cache
+build/
+coverage/
