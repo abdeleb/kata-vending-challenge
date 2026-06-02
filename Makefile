@@ -1,0 +1,34 @@
+DC  := docker compose
+RUN := $(DC) run --rm app
+
+.DEFAULT_GOAL := help
+
+.PHONY: help build install test stan cs cs-fix ci shell
+
+help: ## List available targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+build: ## Build the Docker image
+	$(DC) build
+
+install: ## Install Composer dependencies (generates vendor/ and composer.lock)
+	$(RUN) composer install
+
+test: ## Run the PHPUnit test suite
+	$(RUN) composer test
+
+stan: ## Run PHPStan (level max); will also enforce layer boundaries via PHPat once layers exist
+	$(RUN) composer stan
+
+cs: ## Check coding style (dry run)
+	$(RUN) composer cs
+
+cs-fix: ## Fix coding style in place
+	$(RUN) composer cs:fix
+
+ci: ## Run the full local quality gate (cs + stan + tests)
+	$(RUN) composer ci
+
+shell: ## Open an interactive shell in the container
+	$(RUN) sh

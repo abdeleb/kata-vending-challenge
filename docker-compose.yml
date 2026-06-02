@@ -1,0 +1,18 @@
+# Compose v2+ — the top-level `version` key is obsolete and intentionally omitted.
+# Explicit project name so derived images/containers/volumes never inherit the host folder name.
+name: vending-machine
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    working_dir: /app
+    volumes:
+      - .:/app
+      - composer-cache:/tmp/composer-cache
+
+volumes:
+  composer-cache:
