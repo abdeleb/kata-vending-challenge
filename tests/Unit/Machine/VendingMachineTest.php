@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace VendingMachine\Tests\Unit\Machine;
 
+use LogicException;
 use PHPUnit\Framework\TestCase;
+use VendingMachine\Domain\Exception\DomainException;
+use VendingMachine\Domain\Exception\IllegalState;
+use VendingMachine\Domain\Exception\SessionNotEmpty;
 use VendingMachine\Domain\Machine\OperationalMode;
 use VendingMachine\Domain\Machine\VendingMachine;
 use VendingMachine\Domain\Money\Coin;
@@ -47,5 +51,106 @@ final class VendingMachineTest extends TestCase
     public function test_return_coin_with_no_balance_is_a_harmless_no_op(): void
     {
         self::assertTrue(VendingMachine::operational()->returnCoins()->isEmpty());
+    }
+
+    public function test_entering_service_switches_mode_when_the_session_is_empty(): void
+    {
+        $machine = VendingMachine::operational();
+
+        $machine->enterService();
+
+        self::assertSame(OperationalMode::Service, $machine->mode());
+    }
+
+    public function test_leaving_service_returns_the_machine_to_operational(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $machine->leaveService();
+
+        self::assertSame(OperationalMode::Operational, $machine->mode());
+    }
+
+    public function test_entering_service_with_coins_in_the_tray_is_refused_and_leaves_state_intact(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->insertCoin(Coin::TWENTY_FIVE);
+
+        try {
+            $machine->enterService();
+            self::fail('Expected SessionNotEmpty');
+        } catch (SessionNotEmpty) {
+            // The transition is rejected without side effects: still Operational, coins untouched.
+            self::assertSame(OperationalMode::Operational, $machine->mode());
+            self::assertTrue($machine->insertedAmount()->equals(Money::fromCents(25)));
+        }
+    }
+
+    public function test_entering_service_with_coins_is_a_recoverable_domain_error(): void
+    {
+        // The CLI catches the whole DomainException category and maps it to a user message; this
+        // pins SessionNotEmpty into that recoverable channel (vs. the unmapped IllegalState bug).
+        $machine = VendingMachine::operational();
+        $machine->insertCoin(Coin::TWENTY_FIVE);
+
+        $this->expectException(DomainException::class);
+        $machine->enterService();
+    }
+
+    public function test_returning_the_coins_then_entering_service_is_the_documented_recovery(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->insertCoin(Coin::TWENTY_FIVE);
+
+        $machine->returnCoins();
+        $machine->enterService();
+
+        self::assertSame(OperationalMode::Service, $machine->mode());
+    }
+
+    public function test_inserting_a_coin_in_service_mode_is_an_illegal_state(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $this->expectException(IllegalState::class);
+        $machine->insertCoin(Coin::TEN);
+    }
+
+    public function test_returning_coins_in_service_mode_is_an_illegal_state(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $this->expectException(IllegalState::class);
+        $machine->returnCoins();
+    }
+
+    public function test_entering_service_twice_is_an_illegal_state(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $this->expectException(IllegalState::class);
+        $machine->enterService();
+    }
+
+    public function test_leaving_service_while_operational_is_an_illegal_state(): void
+    {
+        $this->expectException(IllegalState::class);
+        VendingMachine::operational()->leaveService();
+    }
+
+    public function test_a_mode_violation_is_a_programming_bug_not_a_recoverable_domain_error(): void
+    {
+        // IllegalState is a LogicException that bubbles unmapped — the CLI never translates it,
+        // unlike the recoverable DomainException category. LogicException and RuntimeException are
+        // disjoint branches, so catching it here as a LogicException proves it is not a DomainException.
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $this->expectException(LogicException::class);
+        $machine->insertCoin(Coin::TEN);
     }
 }
