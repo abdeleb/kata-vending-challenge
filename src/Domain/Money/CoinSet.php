@@ -73,6 +73,51 @@ final readonly class CoinSet
         return new self($counts);
     }
 
+    /**
+     * Merge another set into this one, summing the counts of each denomination. Used to pour the
+     * session retention tray into the bank when building the tentative inventory for a sale.
+     */
+    public function plus(self $other): self
+    {
+        $counts = $this->countsByCents;
+
+        foreach ($other->countsByCents as $cents => $count) {
+            $counts[$cents] = ($counts[$cents] ?? 0) + $count;
+        }
+
+        return new self($counts);
+    }
+
+    /**
+     * Subtract another set from this one, denomination by denomination. Used to commit a sale by
+     * deducting the dispensed change from the tentative inventory. Fails closed (never goes negative):
+     * removing more of a denomination than is present is rejected, like remove().
+     */
+    public function minus(self $other): self
+    {
+        $counts = $this->countsByCents;
+
+        foreach ($other->countsByCents as $cents => $count) {
+            $available = $counts[$cents] ?? 0;
+
+            if ($count > $available) {
+                throw new InvalidArgumentException(
+                    "Cannot remove {$count} coin(s) of {$cents}c; only {$available} available.",
+                );
+            }
+
+            $remaining = $available - $count;
+
+            if ($remaining === 0) {
+                unset($counts[$cents]);
+            } else {
+                $counts[$cents] = $remaining;
+            }
+        }
+
+        return new self($counts);
+    }
+
     public function count(Coin $coin): int
     {
         return $this->countsByCents[$coin->valueInCents()] ?? 0;
