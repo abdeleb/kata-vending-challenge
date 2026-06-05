@@ -9,9 +9,11 @@ use PHPUnit\Framework\TestCase;
 use VendingMachine\Domain\Exception\DomainException;
 use VendingMachine\Domain\Exception\IllegalState;
 use VendingMachine\Domain\Exception\SessionNotEmpty;
+use VendingMachine\Domain\Inventory\ItemInventory;
 use VendingMachine\Domain\Machine\OperationalMode;
 use VendingMachine\Domain\Machine\VendingMachine;
 use VendingMachine\Domain\Money\Coin;
+use VendingMachine\Domain\Money\CoinSet;
 use VendingMachine\Domain\Money\Money;
 
 final class VendingMachineTest extends TestCase
@@ -152,5 +154,74 @@ final class VendingMachineTest extends TestCase
 
         $this->expectException(LogicException::class);
         $machine->insertCoin(Coin::TEN);
+    }
+
+    public function test_a_fresh_machine_holds_no_change_and_no_stock(): void
+    {
+        $machine = VendingMachine::operational();
+
+        self::assertTrue($machine->availableChange()->isEmpty());
+        self::assertSame(0, $machine->stockOf('WATER'));
+    }
+
+    public function test_service_sets_the_available_change(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $machine->setAvailableChange(CoinSet::empty()->add(Coin::TWENTY_FIVE, 4)->add(Coin::TEN, 2));
+
+        self::assertSame(4, $machine->availableChange()->count(Coin::TWENTY_FIVE));
+        self::assertSame(2, $machine->availableChange()->count(Coin::TEN));
+        self::assertTrue($machine->availableChange()->total()->equals(Money::fromCents(120)));
+    }
+
+    public function test_setting_the_change_replaces_the_reserve_rather_than_adding_to_it(): void
+    {
+        // Verbatim "set the available change": the technician declares the absolute coin inventory,
+        // not an increment. SERVICE is the deliberate point where money conservation does not hold.
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $machine->setAvailableChange(CoinSet::empty()->add(Coin::TWENTY_FIVE, 10));
+        $machine->setAvailableChange(CoinSet::empty()->add(Coin::FIVE, 3));
+
+        self::assertSame(0, $machine->availableChange()->count(Coin::TWENTY_FIVE), 'the previous reserve is replaced, not topped up');
+        self::assertSame(3, $machine->availableChange()->count(Coin::FIVE));
+    }
+
+    public function test_service_restocks_the_items(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $machine->restockItems(ItemInventory::fromQuantities(['WATER' => 5, 'SODA' => 2]));
+
+        self::assertSame(5, $machine->stockOf('WATER'));
+        self::assertSame(2, $machine->stockOf('SODA'));
+    }
+
+    public function test_restocking_replaces_the_stock_rather_than_adding_to_it(): void
+    {
+        $machine = VendingMachine::operational();
+        $machine->enterService();
+
+        $machine->restockItems(ItemInventory::fromQuantities(['WATER' => 5]));
+        $machine->restockItems(ItemInventory::fromQuantities(['SODA' => 2]));
+
+        self::assertSame(0, $machine->stockOf('WATER'), 'the previous stock is replaced, not topped up');
+        self::assertSame(2, $machine->stockOf('SODA'));
+    }
+
+    public function test_setting_the_change_is_a_service_only_action(): void
+    {
+        $this->expectException(IllegalState::class);
+        VendingMachine::operational()->setAvailableChange(CoinSet::empty()->add(Coin::FIVE));
+    }
+
+    public function test_restocking_is_a_service_only_action(): void
+    {
+        $this->expectException(IllegalState::class);
+        VendingMachine::operational()->restockItems(ItemInventory::fromQuantities(['WATER' => 1]));
     }
 }
