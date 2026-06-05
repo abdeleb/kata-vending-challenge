@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace VendingMachine\Domain\Machine;
 
+use function sprintf;
+
+use VendingMachine\Domain\Exception\IllegalState;
+use VendingMachine\Domain\Exception\SessionNotEmpty;
 use VendingMachine\Domain\Money\Coin;
 use VendingMachine\Domain\Money\CoinSet;
 use VendingMachine\Domain\Money\Money;
@@ -42,6 +46,8 @@ final class VendingMachine
 
     public function insertCoin(Coin $coin): void
     {
+        $this->guardMode(OperationalMode::Operational);
+
         $this->sessionCoins = $this->sessionCoins->add($coin);
     }
 
@@ -51,9 +57,56 @@ final class VendingMachine
      */
     public function returnCoins(): CoinSet
     {
+        $this->guardMode(OperationalMode::Operational);
+
         $returned = $this->sessionCoins;
         $this->sessionCoins = CoinSet::empty();
 
         return $returned;
+    }
+
+    /**
+     * Open the machine for servicing (Operational -> Service).
+     *
+     * The customer side must be settled first: entering Service with coins still in the tray raises
+     * SessionNotEmpty (a recoverable condition — the technician returns the coins and retries), not
+     * an IllegalState. Returning those coins is left to RETURN-COIN so this transition stays
+     * single-purpose.
+     */
+    public function enterService(): void
+    {
+        $this->guardMode(OperationalMode::Operational);
+
+        if (!$this->sessionCoins->isEmpty()) {
+            throw new SessionNotEmpty('Cannot enter Service while coins remain in the tray; return them first.');
+        }
+
+        $this->mode = OperationalMode::Service;
+    }
+
+    /**
+     * Close the machine and return it to normal operation (Service -> Operational).
+     */
+    public function leaveService(): void
+    {
+        $this->guardMode(OperationalMode::Service);
+
+        $this->mode = OperationalMode::Operational;
+    }
+
+    /**
+     * Enforce that an operation runs only in the mode it belongs to.
+     *
+     * Customer actions require Operational and service actions require Service; a call from the
+     * wrong mode is something a correct driver never does, so it is a programming bug (IllegalState,
+     * a LogicException that bubbles unmapped) rather than a user-facing domain error.
+     */
+    private function guardMode(OperationalMode $required): void
+    {
+        if ($this->mode !== $required) {
+            throw new IllegalState(
+                sprintf('Operation requires %s mode, but the machine is in %s mode.', $required->name, $this->mode->name),
+            );
+        }
     }
 }
