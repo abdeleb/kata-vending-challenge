@@ -6,7 +6,12 @@ namespace VendingMachine\Domain\Machine;
 
 use function sprintf;
 
+use VendingMachine\Domain\Catalog\Catalog;
+use VendingMachine\Domain\Change\ChangeStrategy;
+use VendingMachine\Domain\Exception\CannotDispenseChange;
 use VendingMachine\Domain\Exception\IllegalState;
+use VendingMachine\Domain\Exception\InsufficientFunds;
+use VendingMachine\Domain\Exception\OutOfStock;
 use VendingMachine\Domain\Exception\SessionNotEmpty;
 use VendingMachine\Domain\Inventory\ItemInventory;
 use VendingMachine\Domain\Money\Coin;
@@ -29,12 +34,19 @@ final class VendingMachine
         private CoinSet $sessionCoins,
         private CoinSet $bank,
         private ItemInventory $items,
+        private readonly Catalog $catalog,
     ) {
     }
 
-    public static function operational(): self
+    public static function operational(Catalog $catalog): self
     {
-        return new self(OperationalMode::Operational, CoinSet::empty(), CoinSet::empty(), ItemInventory::empty());
+        return new self(
+            OperationalMode::Operational,
+            CoinSet::empty(),
+            CoinSet::empty(),
+            ItemInventory::empty(),
+            $catalog,
+        );
     }
 
     public function mode(): OperationalMode
@@ -66,6 +78,55 @@ final class VendingMachine
         $this->sessionCoins = CoinSet::empty();
 
         return $returned;
+    }
+
+    /**
+     * Sell a product. The aggregate owns the whole transaction and decides, by itself, whether the
+     * sale is legal: it checks the mode, that the product exists, that it is in stock and that the
+     * inserted coins cover the price, then asks the strategy whether exact change can be composed
+     * from the tentative bank (the reserve plus the customer's own coins). Only once every check has
+     * passed does it mutate — the new bank, stock and emptied session are computed into locals and
+     * assigned last, so a sale that cannot complete leaves the machine untouched (all-or-nothing).
+     *
+     * The change strategy is injected here rather than held as state: it is stateless behaviour used
+     * only by the sale, so it stays out of the aggregate's persistable data, unlike the catalog.
+     */
+    public function selectItem(string $code, ChangeStrategy $strategy): VendingResult
+    {
+        $this->guardMode(OperationalMode::Operational);
+
+        $product = $this->catalog->productFor($code);
+
+        if (!$this->items->hasStock($code)) {
+            throw new OutOfStock("No stock to dispense for '{$code}'.");
+        }
+
+        $inserted = $this->sessionCoins->total();
+
+        if (!$inserted->isGreaterThanOrEqualTo($product->price)) {
+            throw new InsufficientFunds(
+                sprintf("Inserted %dc, but '%s' costs %dc.", $inserted->cents, $code, $product->price->cents),
+            );
+        }
+
+        $due = $inserted->subtract($product->price);
+        $tentativeBank = $this->bank->plus($this->sessionCoins);
+        $change = $strategy->computeChange($due, $tentativeBank);
+
+        if ($change === null) {
+            throw new CannotDispenseChange(
+                sprintf("Cannot compose %dc of change for '%s' from the available coins.", $due->cents, $code),
+            );
+        }
+
+        $newBank = $tentativeBank->minus($change);
+        $newItems = $this->items->dispense($code);
+
+        $this->bank = $newBank;
+        $this->items = $newItems;
+        $this->sessionCoins = CoinSet::empty();
+
+        return new VendingResult($product, $change);
     }
 
     /**
