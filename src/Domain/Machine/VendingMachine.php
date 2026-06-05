@@ -8,6 +8,7 @@ use function sprintf;
 
 use VendingMachine\Domain\Exception\IllegalState;
 use VendingMachine\Domain\Exception\SessionNotEmpty;
+use VendingMachine\Domain\Inventory\ItemInventory;
 use VendingMachine\Domain\Money\Coin;
 use VendingMachine\Domain\Money\CoinSet;
 use VendingMachine\Domain\Money\Money;
@@ -26,12 +27,14 @@ final class VendingMachine
     private function __construct(
         private OperationalMode $mode,
         private CoinSet $sessionCoins,
+        private CoinSet $bank,
+        private ItemInventory $items,
     ) {
     }
 
     public static function operational(): self
     {
-        return new self(OperationalMode::Operational, CoinSet::empty());
+        return new self(OperationalMode::Operational, CoinSet::empty(), CoinSet::empty(), ItemInventory::empty());
     }
 
     public function mode(): OperationalMode
@@ -92,6 +95,46 @@ final class VendingMachine
         $this->guardMode(OperationalMode::Service);
 
         $this->mode = OperationalMode::Operational;
+    }
+
+    /**
+     * Service operation: declare the machine's change reserve.
+     *
+     * Set semantics, not add — the spec says "set the available change", so the technician states
+     * the absolute coin inventory left in the drawer, replacing whatever was there. This is the one
+     * point where money conservation deliberately does not hold: coins enter (or leave) the system by
+     * the technician's decision, not by a sale. An incremental "add change" would be a separate,
+     * differently-named operation.
+     */
+    public function setAvailableChange(CoinSet $coins): void
+    {
+        $this->guardMode(OperationalMode::Service);
+
+        $this->bank = $coins;
+    }
+
+    /**
+     * Service operation: declare the product stock. Set semantics, like setAvailableChange — the
+     * technician states what is in the machine after refilling, replacing the previous stock.
+     */
+    public function restockItems(ItemInventory $items): void
+    {
+        $this->guardMode(OperationalMode::Service);
+
+        $this->items = $items;
+    }
+
+    /**
+     * The coins currently held as change reserve (the bank), distinct from the customer's session.
+     */
+    public function availableChange(): CoinSet
+    {
+        return $this->bank;
+    }
+
+    public function stockOf(string $code): int
+    {
+        return $this->items->stockFor($code);
     }
 
     /**
