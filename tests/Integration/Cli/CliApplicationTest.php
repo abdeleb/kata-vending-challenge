@@ -4,14 +4,7 @@ declare(strict_types=1);
 
 namespace VendingMachine\Tests\Integration\Cli;
 
-use function fopen;
-use function fwrite;
-
 use PHPUnit\Framework\TestCase;
-
-use function rewind;
-use function stream_get_contents;
-
 use VendingMachine\Application\Service\VendingMachineService;
 use VendingMachine\Domain\Catalog\Catalog;
 use VendingMachine\Domain\Catalog\Product;
@@ -28,9 +21,12 @@ use VendingMachine\Infrastructure\Cli\CommandInterpreter;
 use VendingMachine\Infrastructure\Cli\ErrorMapper;
 use VendingMachine\Infrastructure\Cli\OutputFormatter;
 use VendingMachine\Infrastructure\Persistence\InMemoryVendingMachineRepository;
+use VendingMachine\Tests\Support\InMemoryStreams;
 
 final class CliApplicationTest extends TestCase
 {
+    use InMemoryStreams;
+
     public function test_a_successful_purchase_is_written_to_stdout_with_a_zero_exit_code(): void
     {
         $application = $this->stockedApplication();
@@ -123,33 +119,5 @@ final class CliApplicationTest extends TestCase
         $interpreter = new CommandInterpreter($service, new CoinParser(), new OutputFormatter());
 
         return new CliApplication($interpreter, new ErrorMapper());
-    }
-
-    /**
-     * @return resource
-     */
-    private function memoryStream(string $contents = '')
-    {
-        $stream = fopen('php://memory', 'r+');
-
-        if ($stream === false) {
-            self::fail('Could not open an in-memory stream.');
-        }
-
-        fwrite($stream, $contents);
-        rewind($stream);
-
-        return $stream;
-    }
-
-    /**
-     * @param resource $stream
-     */
-    private function contentsOf($stream): string
-    {
-        rewind($stream);
-        $contents = stream_get_contents($stream);
-
-        return $contents === false ? '' : $contents;
     }
 }
