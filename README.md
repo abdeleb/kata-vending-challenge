@@ -8,9 +8,9 @@ Money is integer cents — never floats.
 You only need **Docker** installed — nothing else.
 
 ```bash
-make build      # build the PHP 8.3 image (first time only)
-make install    # install dependencies
-make run        # start the machine
+docker compose build                            # build the PHP 8.3 image (first time only)
+docker compose run --rm app composer install    # install dependencies
+docker compose run --rm app php bin/vending      # start the machine
 ```
 
 Then type a command and press enter:
@@ -27,7 +27,10 @@ echo '1, GET-WATER' | docker compose run --rm -T app php bin/vending
 # WATER, 0.25, 0.10
 ```
 
-That's it. `make test` runs the tests and `make ci` runs the full quality gate.
+That's it — `docker compose run --rm app composer test` runs the tests, and `composer ci` the full gate.
+
+> **Shortcut:** with `make` installed, the same commands are `make build`, `make install`, `make run`,
+> `make test`, `make ci` (run `make` with no target to list them).
 
 ## Commands
 
@@ -59,8 +62,8 @@ src/Infrastructure/   CLI adapter + in-memory persistence
 bin/vending           entrypoint
 ```
 
-The dependency rule (the domain depends on nothing) is enforced by PHPStan + PHPat, and `make ci`
-(style + static analysis at level max + tests) runs in CI on every push. The reasoning behind every
+The dependency rule (the domain depends on nothing) is enforced by PHPStan + PHPat, and the full gate
+(`composer ci` — style, static analysis at level max, tests) runs in CI on every push. The reasoning behind every
 design choice is in [`docs/decision-log.md`](docs/decision-log.md).
 
 ## License
