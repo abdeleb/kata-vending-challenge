@@ -2,10 +2,6 @@
 # Ignored from commit 1: they carry the challenge context and must not leak via `git add -A`.
 /PLAN*.md
 
-# Decision log kept as a working draft during development. Written submission-ready (no challenge
-# context), so it can simply be un-ignored and committed when the ADR is finalised (step 12).
-/docs/decision-log.md
-
 # Local-only list of forbidden tokens for `make check-leak` (kept out of the repo on purpose, so the
 # guard never has to name what it guards against).
 /.forbidden
