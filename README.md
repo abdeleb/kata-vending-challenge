@@ -1,43 +1,64 @@
 # Vending Machine
 
-A vending machine modeled as a **pure domain core** with a thin **CLI adapter**
-(hexagonal architecture / ports & adapters). Money is handled in **integer cents** — never floats.
+A vending machine with a **pure domain core** and a thin **CLI adapter** (hexagonal architecture).
+Money is integer cents — never floats.
 
-This repository is a senior backend coding challenge. It is evaluated on architecture,
-extensibility and testing rather than on "just making it work".
+## Install & run
 
-## Requirements
-
-Only **Docker** and **Docker Compose** are required — no local PHP or Composer install.
-The dev environment is a containerized PHP 8.3 CLI.
-
-## Getting started
+You only need **Docker** installed — nothing else.
 
 ```bash
-make build      # build the PHP 8.3 image
-make install    # install Composer dependencies (creates vendor/ and composer.lock)
-make test       # run the test suite
+make build      # build the PHP 8.3 image (first time only)
+make install    # install dependencies
+make run        # start the machine
 ```
 
-Run `make` with no target to list everything available.
+Then type a command and press enter:
 
-## Quality gates
+```text
+1, 0.25, 0.25, GET-SODA
+SODA
+```
+
+Or pipe a command straight in:
 
 ```bash
-make cs         # coding style check (PHP-CS-Fixer, dry run)
-make cs-fix     # fix coding style in place
-make stan       # static analysis (PHPStan, level max)
-make ci         # the full local gate: cs + stan + tests
+echo '1, GET-WATER' | docker compose run --rm -T app php bin/vending
+# WATER, 0.25, 0.10
 ```
 
-> Layer-boundary enforcement (Domain must not depend on Infrastructure, etc.) runs **inside**
-> the PHPStan pass via [PHPat](https://github.com/carlosas/phpat) and is wired once the layers
-> exist. `deptrac`, the originally-planned tool, was archived in 2025 and is intentionally not used.
+That's it. `make test` runs the tests and `make ci` runs the full quality gate.
 
-## Reproducibility
+## Commands
 
-`composer.lock` is committed. The Docker image pins the PHP minor tag; for stronger guarantees
-it can be pinned by immutable digest (`php:8.3-cli@sha256:...`).
+A line is a comma-separated list of commands. Coins add up until a `GET` or `RETURN-COIN` resolves them.
+
+| Command                       | What it does                       |
+| ----------------------------- | ---------------------------------- |
+| `0.05` `0.10` `0.25` `1`      | insert a coin                      |
+| `GET-<CODE>`                  | buy a product                      |
+| `RETURN-COIN`                 | give the inserted coins back       |
+| `SERVICE` / `END-SERVICE`     | enter / leave service mode         |
+| `SET-CHANGE, 0.25, 0.10`      | *(service)* set the change drawer  |
+| `RESTOCK, SODA:5, WATER:3`    | *(service)* set the stock          |
+
+The machine returns exact change or **refuses the sale** — it never short-changes you. It comes
+stocked with `WATER` (0.65), `SODA` (1.50) and `JUICE` (0.90).
+
+Exit code: `0` success · `1` refused (no stock / funds / change) · `2` bad input.
+
+## How it's built
+
+```text
+src/Domain/           business core — no framework, no I/O
+src/Application/       use-case ports + orchestrating service
+src/Infrastructure/   CLI adapter + in-memory persistence
+bin/vending           entrypoint
+```
+
+The dependency rule (the domain depends on nothing) is enforced by PHPStan + PHPat, and `make ci`
+(style + static analysis at level max + tests) runs in CI on every push. The reasoning behind every
+design choice is in [`docs/decision-log.md`](docs/decision-log.md).
 
 ## License
 
