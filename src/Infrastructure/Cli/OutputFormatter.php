@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace VendingMachine\Infrastructure\Cli;
 
+use function array_reverse;
+use function implode;
 use function intdiv;
 use function sprintf;
 
 use VendingMachine\Domain\Money\Coin;
+use VendingMachine\Domain\Money\CoinSet;
 
 /**
  * Renders a coin as the canonical decimal string the CLI prints (25c -> "0.25"), the inverse of
@@ -27,5 +30,30 @@ final class OutputFormatter
         $cents = $coin->valueInCents();
 
         return sprintf('%d.%02d', intdiv($cents, 100), $cents % 100);
+    }
+
+    /**
+     * Render a set of coins as a comma-separated list, highest denomination first (e.g. "0.25, 0.10"),
+     * the form the CLI prints for a sale's change and for returned coins. An empty set renders to "".
+     *
+     * The CoinSet keeps its contents private and exposes no iterator: formatting is presentation, not a
+     * domain operation, so it does not earn a place on the value object (unlike plus/minus, which are
+     * domain arithmetic). Instead this adapter — which legitimately knows the denominations — walks the
+     * fixed coin set and asks count() per denomination, leaving the CoinSet's surface minimal. The order
+     * is a presentation choice owned here, not by the unordered multiset.
+     */
+    public function formatCoins(CoinSet $coins): string
+    {
+        $parts = [];
+
+        foreach (array_reverse(Coin::cases()) as $coin) {
+            $count = $coins->count($coin);
+
+            for ($i = 0; $i < $count; ++$i) {
+                $parts[] = $this->formatCoin($coin);
+            }
+        }
+
+        return implode(', ', $parts);
     }
 }
