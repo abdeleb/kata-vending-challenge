@@ -6,7 +6,9 @@ namespace VendingMachine\Infrastructure\Cli;
 
 use function array_filter;
 use function array_map;
+use function array_slice;
 use function array_values;
+use function count;
 use function explode;
 use function preg_match;
 use function sprintf;
@@ -15,16 +17,23 @@ use function substr;
 use function trim;
 
 use VendingMachine\Application\Port\MachineDriver;
+use VendingMachine\Domain\Inventory\ItemInventory;
+use VendingMachine\Domain\Money\CoinSet;
 
 /**
  * Translates a line of CLI text into calls on the driving port and renders the result back to text.
  *
  * A line is a comma-separated stream of tokens executed left to right, which is exactly how the brief's
  * examples read ("1, 0.25, 0.25, GET-SODA"). Each token maps to one use case: a decimal is a coin to
- * insert, GET-<code> selects an item, RETURN-COIN returns the tray. Coins produce no output; a sale or
- * a return produces one rendered line. Classification routes anything starting with a digit to the coin
- * parser (so "0.30" still fails as an InvalidCoin with its precise message) and everything else to a
- * command keyword, so an unknown word is an InvalidCommand rather than a bad coin.
+ * insert, GET-<code> selects an item, RETURN-COIN returns the tray, and SERVICE / END-SERVICE move in
+ * and out of service mode. SET-CHANGE and RESTOCK are the two variadic service commands: they consume
+ * the rest of their line as operands (coin tokens, or CODE:quantity pairs), matching the aggregate's
+ * set-semantics — the technician declares the whole drawer or shelf at once.
+ *
+ * Coins and service commands produce no output; a sale or a return produces one rendered line.
+ * Classification routes anything starting with a digit to the coin parser (so "0.30" still fails as an
+ * InvalidCoin with its precise message) and everything else to a command keyword, so an unknown word is
+ * an InvalidCommand rather than a bad coin.
  *
  * It depends only on the MachineDriver port, never on a concrete service, so the same interpreter works
  * over any wiring; turning exceptions into exit codes is left to the error mapper, keeping this class to
@@ -41,15 +50,31 @@ final class CommandInterpreter
 
     /**
      * Run every command on a line in order and return the lines it produced (empty when the line only
-     * inserted coins or was blank).
+     * inserted coins, ran a service command or was blank).
      *
      * @return list<string>
      */
     public function interpret(string $line): array
     {
+        $tokens = $this->tokenize($line);
         $output = [];
 
-        foreach ($this->tokenize($line) as $token) {
+        for ($i = 0, $count = count($tokens); $i < $count; ++$i) {
+            $token = $tokens[$i];
+
+            // The two variadic service commands take the rest of the line as their operands.
+            if ($token === 'SET-CHANGE') {
+                $this->driver->setAvailableChange($this->parseChange(array_slice($tokens, $i + 1)));
+
+                break;
+            }
+
+            if ($token === 'RESTOCK') {
+                $this->driver->restockItems($this->parseStock(array_slice($tokens, $i + 1)));
+
+                break;
+            }
+
             $rendered = $this->dispatch($token);
 
             if ($rendered !== null) {
@@ -72,6 +97,18 @@ final class CommandInterpreter
             return $this->formatter->formatCoins($this->driver->returnCoins());
         }
 
+        if ($token === 'SERVICE') {
+            $this->driver->enterService();
+
+            return null;
+        }
+
+        if ($token === 'END-SERVICE') {
+            $this->driver->leaveService();
+
+            return null;
+        }
+
         if (str_starts_with($token, 'GET-')) {
             $code = substr($token, 4);
 
@@ -83,6 +120,44 @@ final class CommandInterpreter
         }
 
         throw new InvalidCommand(sprintf('"%s" is not a recognized command.', $token));
+    }
+
+    /**
+     * Build the change drawer from coin tokens, reusing the boundary coin parser so an out-of-range
+     * value fails as the same InvalidCoin a customer would get. An empty list declares an empty drawer.
+     *
+     * @param list<string> $tokens
+     */
+    private function parseChange(array $tokens): CoinSet
+    {
+        $coins = CoinSet::empty();
+
+        foreach ($tokens as $token) {
+            $coins = $coins->add($this->coinParser->parse($token));
+        }
+
+        return $coins;
+    }
+
+    /**
+     * Build the product stock from CODE:quantity pairs (e.g. "SODA:5"). An empty list declares an empty
+     * shelf; a malformed pair is an InvalidCommand.
+     *
+     * @param list<string> $tokens
+     */
+    private function parseStock(array $tokens): ItemInventory
+    {
+        $quantities = [];
+
+        foreach ($tokens as $token) {
+            if (preg_match('/^([^:]+):(\d+)$/', $token, $matches) !== 1) {
+                throw new InvalidCommand(sprintf('"%s" is not a valid "CODE:quantity" pair.', $token));
+            }
+
+            $quantities[$matches[1]] = (int) $matches[2];
+        }
+
+        return ItemInventory::fromQuantities($quantities);
     }
 
     /**
