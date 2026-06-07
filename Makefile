@@ -3,7 +3,7 @@ RUN := $(DC) run --rm app
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install test stan cs cs-fix ci check-leak shell
+.PHONY: help build install test stan cs cs-fix ci check-leak run shell
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -38,6 +38,9 @@ check-leak: ## Local-only: fail if any pattern in the gitignored .forbidden file
 		exit 1; \
 	fi; \
 	echo "check-leak: clean"
+
+run: ## Start the CLI over stdin (type commands, or pipe them in)
+	$(RUN) php bin/vending
 
 shell: ## Open an interactive shell in the container
 	$(RUN) sh
