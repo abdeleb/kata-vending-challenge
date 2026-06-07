@@ -3,7 +3,7 @@ RUN := $(DC) run --rm app
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install test stan cs cs-fix ci shell
+.PHONY: help build install test stan cs cs-fix ci check-leak shell
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -29,6 +29,15 @@ cs-fix: ## Fix coding style in place
 
 ci: ## Run the full local quality gate (cs + stan + tests)
 	$(RUN) composer ci
+
+check-leak: ## Local-only: fail if any pattern in the gitignored .forbidden file appears in tracked files
+	@if [ ! -f .forbidden ]; then echo "check-leak: no .forbidden file, skipping"; exit 0; fi; \
+	if git grep -I -i -n -f .forbidden -- ':!composer.lock' >/dev/null 2>&1; then \
+		echo "check-leak: forbidden token found in a tracked file:"; \
+		git grep -I -i -n -f .forbidden -- ':!composer.lock'; \
+		exit 1; \
+	fi; \
+	echo "check-leak: clean"
 
 shell: ## Open an interactive shell in the container
 	$(RUN) sh

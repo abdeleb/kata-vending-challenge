@@ -6,6 +6,10 @@
 # context), so it can simply be un-ignored and committed when the ADR is finalised (step 12).
 /docs/decision-log.md
 
+# Local-only list of forbidden tokens for `make check-leak` (kept out of the repo on purpose, so the
+# guard never has to name what it guards against).
+/.forbidden
+
 # Composer-managed dependencies (composer.lock IS committed — see below).
 /vendor/
 
