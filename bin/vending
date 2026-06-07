@@ -1,0 +1,10 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use VendingMachine\Infrastructure\Cli\CliBootstrap;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+exit(CliBootstrap::defaultApplication()->run(STDIN, STDOUT, STDERR));
