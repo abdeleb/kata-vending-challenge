@@ -15,9 +15,9 @@ use PHPat\Test\PHPat;
  * The domain is the innermost layer of the hexagon, so it must depend on nothing outside itself:
  * neither the application that orchestrates it nor the infrastructure adapters around it. That is
  * what lets persistence (the repository), delivery (CLI/HTTP) and any future adapter be swapped
- * without touching the core. The application layer has no classes yet, so that target enforces
- * vacuously today and starts biting the moment step 8 introduces it (which will also add the
- * Application -> Infrastructure rule).
+ * without touching the core. The application layer sits between them: it orchestrates the domain
+ * through ports and must not reach for a concrete infrastructure adapter, which the composition root
+ * is responsible for wiring in.
  */
 final class ArchitectureTest
 {
@@ -32,5 +32,15 @@ final class ArchitectureTest
                 Selector::inNamespace('VendingMachine\Infrastructure'),
             )
             ->because('the domain is the innermost hexagon layer and must stay independent of the application and infrastructure around it');
+    }
+
+    public function test_the_application_depends_on_nothing_in_infrastructure(): Rule
+    {
+        return PHPat::rule()
+            ->classes(Selector::inNamespace('VendingMachine\Application'))
+            ->shouldNot()
+            ->dependOn()
+            ->classes(Selector::inNamespace('VendingMachine\Infrastructure'))
+            ->because('the application orchestrates the domain through ports; concrete adapters are wired in by the composition root, never referenced directly');
     }
 }
