@@ -5,18 +5,21 @@ declare(strict_types=1);
 namespace VendingMachine\Infrastructure\Cli;
 
 use Throwable;
+use VendingMachine\Domain\Exception\IllegalState;
 
 /**
- * Maps a recoverable error to the process exit code the CLI reports, keeping the exit-code contract in
- * a single place.
+ * Maps an error the run loop caught to the process exit code the CLI reports, keeping the exit-code
+ * contract in a single place.
  *
- * The exception hierarchy already separates the two error kinds: the CLI catches the recoverable
- * RuntimeException family and never catches IllegalState (a LogicException), so a programming bug
- * bubbles out with a stack trace instead of being dressed up as a user error. Within the recoverable
- * family this draws a further, conventional line: malformed input — an unaccepted coin or an
- * unrecognized command — is a usage error (code 2), while every other recoverable error is a valid
- * command the machine refused for a domain reason (out of stock, insufficient funds, no change, a busy
- * tray), which is the DomainException family and maps to the operational error code (code 1).
+ * The code is drawn off the exception type. A valid command the machine refused for a domain reason —
+ * out of stock, insufficient funds, no change, a busy tray (the DomainException family) — maps to the
+ * operational error code (1). Malformed or inapplicable input maps to the usage code (2): an unaccepted
+ * coin or an unrecognized command (InvalidCoin / InvalidCommand), and a command issued in the wrong
+ * mode (IllegalState) — because the CLI's driver is a human typing commands, a wrong-mode command (e.g.
+ * GET-WATER while servicing) is an ordinary usage mistake to report and recover from, not the
+ * programming bug it would be behind a correct programmatic driver. Genuinely unexpected failures (a
+ * broken invariant, any Error) are not in this map: the run loop never catches them, so they still
+ * bubble with a stack trace.
  */
 final class ErrorMapper
 {
@@ -32,7 +35,9 @@ final class ErrorMapper
     public function exitCodeFor(Throwable $error): int
     {
         return match (true) {
-            $error instanceof InvalidCoin, $error instanceof InvalidCommand => self::EXIT_INPUT_ERROR,
+            $error instanceof InvalidCoin,
+            $error instanceof InvalidCommand,
+            $error instanceof IllegalState => self::EXIT_INPUT_ERROR,
             default => self::EXIT_DOMAIN_ERROR,
         };
     }

@@ -187,7 +187,7 @@ final class MoneyConservationFuzzTest extends TestCase
         return Catalog::of(
             Product::create('WATER', Money::fromCents(65)),
             Product::create('SODA', Money::fromCents(150)),
-            Product::create('JUICE', Money::fromCents(90)),
+            Product::create('JUICE', Money::fromCents(100)),
         );
     }
 }

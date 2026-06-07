@@ -42,8 +42,11 @@ A line is a comma-separated list of commands. Coins add up until a `GET` or `RET
 | `SET-CHANGE, 0.25, 0.10`      | *(service)* set the change drawer  |
 | `RESTOCK, SODA:5, WATER:3`    | *(service)* set the stock          |
 
+`SET-CHANGE` and `RESTOCK` take the rest of the line as their operands, so each must be the **last
+command on its line** — anything after them is rejected, not silently dropped.
+
 The machine returns exact change or **refuses the sale** — it never short-changes you. It comes
-stocked with `WATER` (0.65), `SODA` (1.50) and `JUICE` (0.90).
+stocked with `WATER` (0.65), `SODA` (1.50) and `JUICE` (1.00).
 
 Exit code: `0` success · `1` refused (no stock / funds / change) · `2` bad input.
 

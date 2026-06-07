@@ -46,6 +46,17 @@ final readonly class ItemInventory
         return $this->quantities[$code] ?? 0;
     }
 
+    /**
+     * The product codes this inventory carries stock for. Lets the aggregate cross-check a declared
+     * stock against the catalog without this type having to know what a catalog is.
+     *
+     * @return list<string>
+     */
+    public function codes(): array
+    {
+        return array_keys($this->quantities);
+    }
+
     public function hasStock(string $code): bool
     {
         return $this->stockFor($code) > 0;

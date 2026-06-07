@@ -10,16 +10,19 @@ use function fwrite;
 use const PHP_EOL;
 
 use RuntimeException;
+use VendingMachine\Domain\Exception\IllegalState;
 
 /**
  * The CLI run loop: read commands line by line, render their output, and turn recoverable errors into
  * stderr messages and a stable exit code.
  *
  * Each line is handed to the interpreter; its rendered output goes to the output stream. A recoverable
- * error -- the RuntimeException family: a bad coin or command, or a domain refusal the machine decided
- * -- is written to the error stream and processing continues with the next line, so one rejected
- * command never aborts the session. A LogicException is deliberately not caught: a driver bug bubbles
- * out with its stack trace instead of being dressed up as a user error.
+ * error is written to the error stream and processing continues with the next line, so one rejected
+ * command never aborts the session: the RuntimeException family (a bad coin or command, or a domain
+ * refusal the machine decided) plus an IllegalState, which a human at this prompt raises by typing a
+ * command in the wrong mode (e.g. GET-WATER while servicing). Any other failure -- a broken invariant
+ * or an Error -- is deliberately not caught and bubbles with its stack trace rather than being dressed
+ * up as a user error.
  *
  * The process exits 0 when every line succeeded, otherwise with the code of the most recent recoverable
  * error, so a piped batch fails the shell whenever a command was refused.
@@ -46,7 +49,7 @@ final class CliApplication
                 foreach ($this->interpreter->interpret($line) as $rendered) {
                     fwrite($output, $rendered . PHP_EOL);
                 }
-            } catch (RuntimeException $error) {
+            } catch (RuntimeException | IllegalState $error) {
                 fwrite($errors, $error->getMessage() . PHP_EOL);
                 $exitCode = $this->errorMapper->exitCodeFor($error);
             }

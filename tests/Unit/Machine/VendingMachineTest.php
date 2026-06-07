@@ -232,6 +232,25 @@ final class VendingMachineTest extends TestCase
         self::machine()->restockItems(ItemInventory::fromQuantities(['WATER' => 1]));
     }
 
+    public function test_restocking_a_code_absent_from_the_catalog_is_refused(): void
+    {
+        // The shelf only holds catalogued products: a code with no price or selector could never be
+        // sold, so declaring it is refused before any state changes -- the prior stock survives intact.
+        $machine = self::machine();
+        $machine->enterService();
+        $machine->restockItems(ItemInventory::fromQuantities(['WATER' => 3]));
+
+        try {
+            $machine->restockItems(ItemInventory::fromQuantities(['COLA' => 5]));
+            self::fail('Expected restocking an uncatalogued code to be refused.');
+        } catch (UnknownProduct $expected) {
+            self::assertStringContainsString('COLA', $expected->getMessage());
+        }
+
+        self::assertSame(0, $machine->stockOf('COLA'), 'the uncatalogued code never enters the shelf');
+        self::assertSame(3, $machine->stockOf('WATER'), 'the prior stock is untouched on a refused restock');
+    }
+
     public function test_selecting_an_item_with_exact_payment_dispenses_it_with_no_change(): void
     {
         // Spec example 1: 1, 0.25, 0.25, GET-SODA -> SODA. 150c is paid exactly, so no change is
@@ -383,14 +402,14 @@ final class VendingMachineTest extends TestCase
 
     /**
      * A fixture catalog with several products (N >= 3). Prices are multiples of 5 cents and match
-     * the spec examples: SODA 1.50 (example 1) and WATER 0.65 (example 3).
+     * the brief's three mandatory items: WATER 0.65, JUICE 1.00, SODA 1.50.
      */
     private static function catalog(): Catalog
     {
         return Catalog::of(
             Product::create('WATER', Money::fromCents(65)),
             Product::create('SODA', Money::fromCents(150)),
-            Product::create('JUICE', Money::fromCents(90)),
+            Product::create('JUICE', Money::fromCents(100)),
         );
     }
 }

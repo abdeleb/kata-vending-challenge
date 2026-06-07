@@ -549,3 +549,75 @@ Each entry states the **context**, the **decision**, the **alternatives consider
   demo catalog, change float and initial stock are clearly labelled seed data, not domain rules. The
   acceptance suite does double duty: it documents the brief's expected behaviour and guards the shipped
   artifact against regressions.
+
+---
+
+## 28. A wrong-mode command from the CLI is recoverable, not a bug (correcting #13 / #26)
+
+- **Context:** #13 and #26 classified *every* mode violation as a programming bug — `IllegalState` (a
+  `LogicException`) that the run loop deliberately never catches — on the litmus "could a correct driver
+  ever trigger it?". The shipped CLI, however, *is* the driver, and it is mode-unaware: the README invites
+  typing `SERVICE` / `END-SERVICE` / `GET-<code>` interactively, so a human at the prompt trivially
+  triggers a mode violation (`END-SERVICE` first; `GET-WATER` while servicing), which crashed the process
+  with an uncaught fatal (exit 255). The litmus was answered wrong for the interactive adapter.
+- **Decision:** Whether a state-precondition violation is a *bug* or a *recoverable* error is the
+  **adapter's** call, not an intrinsic property of the exception. The domain still raises `IllegalState`
+  ("operation invalid in the current state"), but the CLI now catches it at the boundary alongside the
+  `RuntimeException` family, writes it to stderr, maps it to the usage exit code (2) and continues the
+  loop. Only `IllegalState` is caught — not `LogicException` broadly — so a genuine broken invariant
+  (`InvalidArgumentException`, #8) still bubbles as the bug it is.
+- **Alternatives:** (a) Make the interpreter mode-aware — query the mode through the driving port and
+  reject a wrong-mode command as `InvalidCommand` before dispatch. Cleaner separation, but it adds a query
+  to the port for what a single boundary `catch` already expresses. (b) Leave it and reframe the CLI as
+  batch-only — rejected: the README documents interactive use, so the "unreachable" claim stays false.
+  (c) A new dedicated exit code — rejected: a wrong-mode command is a usage mistake like an unrecognized
+  command, so it shares code 2.
+- **Consequences:** The same exception now means different things to different adapters — an HTTP adapter
+  would map it to `409 Conflict`, not a `500` — which is a more honest model than "`IllegalState` is
+  always a bug". Both the interactive REPL and a piped batch survive a wrong-mode typo: it is reported and
+  the next line still runs. This supersedes the part of #13 / #26 that called every mode violation
+  unreachable; the recoverable-vs-bug line drawn in #8 still holds, only relocated to where the human
+  driver actually meets it.
+
+## 29. Restocking enforces catalog membership (closing an orphan-stock gap in #14 / #15)
+
+- **Context:** `ItemInventory` is deliberately catalog-unaware (it only knows codes and counts), and
+  `restockItems` used pure set-semantics (#14). That left the cross-invariant unprotected: a technician
+  could `RESTOCK` a code absent from the catalog, producing stock `selectItem` can never sell (it resolves
+  the product through the catalog first, #15) — and, because of set-semantics, that bad restock also wiped
+  the legitimate stock. The brief models an item as "a count, a price and a selector" as one thing;
+  keeping count separate from price/selector with no tie was the one place that single concept could split.
+- **Decision:** `restockItems` validates every declared code against the catalog and refuses an unknown
+  code with `UnknownProduct` **before any mutation**. `ItemInventory` stays catalog-unaware (it gains only
+  a `codes()` query); the **aggregate**, which already holds the catalog, owns the cross-check — the right
+  altitude, since referential integrity between two structures is the aggregate's job, not a value
+  object's.
+- **Alternatives:** (a) Push the check into `ItemInventory` — rejected: it would have to know about
+  `Catalog`, coupling two types the design keeps independent. (b) Silently drop unknown codes — rejected:
+  it hides an operator typo; failing loud-but-recoverable is better. (c) Expose stock only for catalog
+  codes — same effect, but more intrusive than a guard at the single mutation point.
+- **Consequences:** "an item has a count, a price and a selector" is now a single enforced concept and
+  unsellable inventory is structurally unreachable. The refusal is **atomic** — the `throw` precedes the
+  assignment, reusing #15's assign-last discipline — so a rejected restock leaves the prior stock intact,
+  pinned by a test. `UnknownProduct` (already the unknown-selection error) is reused rather than minting a
+  new type.
+
+## 30. A variadic command refuses to swallow a following command (hardening #25)
+
+- **Context:** #25 made `SET-CHANGE` / `RESTOCK` consume the rest of their line as operands, noting
+  "must be the last command on the line" as a documented constraint. The failure mode was poor: a real
+  command after them was either silently dropped or failed as a confusing "bad operand", and — combined
+  with the old mode-crash — could strand the machine in Service (an `END-SERVICE` consumed as a `RESTOCK`
+  operand never ran).
+- **Decision:** While a variadic command consumes its operands, a token that is itself a recognized
+  command (`RETURN-COIN` / `SERVICE` / `END-SERVICE` / `SET-CHANGE` / `RESTOCK` / `GET-*`) is rejected with
+  an `InvalidCommand` that names the must-be-last rule, instead of being parsed as an operand. The rule is
+  now also stated in the README command table. The check is safe by construction: coins start with a digit
+  and `CODE:quantity` pairs contain a colon, so no valid operand is ever a command token.
+- **Alternatives:** (a) Only improve the operand parsers' error strings — rejected: it dresses up the
+  symptom but still lets a command be misread as a malformed operand. (b) Require the variadic command to
+  be the *sole* command on its line — rejected: `SERVICE, SET-CHANGE, …` on one line is a legitimate
+  convenience, so "last" is the right constraint, not "sole".
+- **Consequences:** A mistyped operator line fails fast with an instructive message instead of silently
+  dropping a command or stranding the mode; together with #28 the same line no longer risks a later crash.
+  The constraint #25 only documented is now enforced.

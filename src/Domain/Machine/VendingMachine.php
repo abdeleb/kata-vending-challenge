@@ -13,6 +13,7 @@ use VendingMachine\Domain\Exception\IllegalState;
 use VendingMachine\Domain\Exception\InsufficientFunds;
 use VendingMachine\Domain\Exception\OutOfStock;
 use VendingMachine\Domain\Exception\SessionNotEmpty;
+use VendingMachine\Domain\Exception\UnknownProduct;
 use VendingMachine\Domain\Inventory\ItemInventory;
 use VendingMachine\Domain\Money\Coin;
 use VendingMachine\Domain\Money\CoinSet;
@@ -177,10 +178,21 @@ final class VendingMachine
     /**
      * Service operation: declare the product stock. Set semantics, like setAvailableChange — the
      * technician states what is in the machine after refilling, replacing the previous stock.
+     *
+     * Every declared code must be a catalogued product. A code with no price or selector could never be
+     * sold — selectItem resolves the product through the catalog first — so stocking it would create
+     * silently unsellable inventory. Such a restock is refused with UnknownProduct before any state
+     * changes, keeping "an item has a count, a price and a selector" a single, enforced concept.
      */
     public function restockItems(ItemInventory $items): void
     {
         $this->guardMode(OperationalMode::Service);
+
+        foreach ($items->codes() as $code) {
+            if (!$this->catalog->has($code)) {
+                throw new UnknownProduct("Cannot restock '{$code}': no such product in the catalog.");
+            }
+        }
 
         $this->items = $items;
     }

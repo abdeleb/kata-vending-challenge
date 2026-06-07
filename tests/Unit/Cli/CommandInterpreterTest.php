@@ -146,6 +146,22 @@ final class CommandInterpreterTest extends TestCase
         $this->interpreterFor(new RecordingMachineDriver())->interpret('RESTOCK, SODA-5');
     }
 
+    public function test_restock_rejects_a_trailing_command_instead_of_swallowing_it(): void
+    {
+        $this->expectException(InvalidCommand::class);
+
+        // RESTOCK consumes the rest of the line, so a trailing END-SERVICE must be refused, not dropped
+        // (which would silently strand the machine in service mode).
+        $this->interpreterFor(new RecordingMachineDriver())->interpret('RESTOCK, WATER:5, END-SERVICE');
+    }
+
+    public function test_set_change_rejects_a_trailing_command_instead_of_swallowing_it(): void
+    {
+        $this->expectException(InvalidCommand::class);
+
+        $this->interpreterFor(new RecordingMachineDriver())->interpret('SET-CHANGE, 0.25, GET-SODA');
+    }
+
     private function interpreterFor(RecordingMachineDriver $driver): CommandInterpreter
     {
         return new CommandInterpreter($driver, new CoinParser(), new OutputFormatter());

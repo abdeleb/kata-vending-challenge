@@ -52,6 +52,25 @@ final class CliAcceptanceTest extends TestCase
         ];
     }
 
+    /**
+     * The brief lists Juice as a mandatory 1.00 item. None of the three brief examples exercises Juice,
+     * so this pins the seeded machine's Juice price end to end: paying exactly 1.00 dispenses it with no
+     * change. A 0.90 seed would render "JUICE, 0.10" and fail here.
+     */
+    public function test_the_default_machine_prices_juice_at_the_mandatory_one_euro(): void
+    {
+        $output = $this->memoryStream();
+
+        $exitCode = CliBootstrap::defaultApplication()->run(
+            $this->memoryStream("1, GET-JUICE\n"),
+            $output,
+            $this->memoryStream(),
+        );
+
+        self::assertSame(ErrorMapper::EXIT_SUCCESS, $exitCode);
+        self::assertSame("JUICE\n", $this->contentsOf($output));
+    }
+
     public function test_the_packaged_binary_serves_a_product_over_real_pipes(): void
     {
         $pipes = [];
