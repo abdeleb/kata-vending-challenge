@@ -9,6 +9,7 @@ use function implode;
 use function intdiv;
 use function sprintf;
 
+use VendingMachine\Domain\Machine\VendingResult;
 use VendingMachine\Domain\Money\Coin;
 use VendingMachine\Domain\Money\CoinSet;
 
@@ -55,5 +56,22 @@ final class OutputFormatter
         }
 
         return implode(', ', $parts);
+    }
+
+    /**
+     * Render a successful sale as the line the CLI prints: the product code, then its change
+     * ("WATER, 0.25, 0.10"), or just the code when payment was exact ("SODA").
+     *
+     * The empty-change branch mirrors a domain distinction (see the change strategy: an empty CoinSet is
+     * exact payment / zero change, as opposed to a null "no combination"). An exact sale is a success
+     * with nothing to hand back, so it renders to the bare code rather than a code with a dangling ", ".
+     */
+    public function formatSale(VendingResult $result): string
+    {
+        if ($result->change->isEmpty()) {
+            return $result->product->code;
+        }
+
+        return $result->product->code . ', ' . $this->formatCoins($result->change);
     }
 }
