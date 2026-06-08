@@ -10,6 +10,8 @@ use function str_pad;
 
 use const STR_PAD_RIGHT;
 
+use function strlen;
+
 use VendingMachine\Domain\Money\Coin;
 
 /**
@@ -28,6 +30,15 @@ final class CoinParser
     {
         if (preg_match('/^(\d+)(?:\.(\d{1,2}))?$/', $token, $matches) !== 1) {
             throw new InvalidCoin(sprintf('"%s" is not a valid amount.', $token));
+        }
+
+        // The regex leaves the integer part unbounded; reject an oversized one before converting. Such a
+        // token can never be a coin (the largest is 1.00), and left unchecked "euros * 100" below would
+        // overflow int into a float — PHP promotes silently — which then reaches Coin::tryFrom (typed int
+        // under strict_types) as an uncatchable TypeError instead of the recoverable InvalidCoin this
+        // boundary guarantees. Three digits is a generous bound that stays well clear of that overflow.
+        if (strlen($matches[1]) > 3) {
+            throw new InvalidCoin(sprintf('"%s" is not an accepted coin.', $token));
         }
 
         $cents = ((int) $matches[1]) * 100;

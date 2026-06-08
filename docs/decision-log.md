@@ -621,3 +621,31 @@ Each entry states the **context**, the **decision**, the **alternatives consider
 - **Consequences:** A mistyped operator line fails fast with an instructive message instead of silently
   dropping a command or stranding the mode; together with #28 the same line no longer risks a later crash.
   The constraint #25 only documented is now enforced.
+
+## 31. The coin parser rejects out-of-range input instead of overflowing (hardening #3 / #21)
+
+- **Context:** #3 / #21 made the CLI coin parser the one float-blind boundary: decimal text becomes integer
+  cents, never via `floatval`. But the integer-part regex (`\d+`) was unbounded, so a long token like
+  `99999999999999999999` — or a single cent past `intdiv(PHP_INT_MAX, 100)` — overflowed `euros * 100` from
+  int into a float, which PHP promotes silently. That float then reached `Coin::tryFrom`, typed `int` under
+  `strict_types`, as a `TypeError` — an `Error`, not the recoverable `RuntimeException` family the CLI
+  catches — so the process crashed (exit 255) and, in a piped batch, discarded every following line. The
+  parser's own contract ("anything out of range is a recoverable `InvalidCoin`") held to one cent below the
+  threshold and then fell off an undocumented arithmetic cliff.
+- **Decision:** Reject an oversized integer part up front (`strlen($matches[1]) > 3`) as an `InvalidCoin`,
+  before the cents arithmetic can overflow. The bound is generous — no coin exceeds `1.00`, so three digits
+  is already far past any real value — and stays well clear of the overflow threshold; `Coin::tryFrom`
+  remains the sole authority on which cent values are valid denominations.
+- **Alternatives:** (a) Broaden `CliApplication`'s `catch` to `Throwable` so the `TypeError` becomes a user
+  message — rejected: it would also swallow genuine programming bugs, the very thing the `RuntimeException`
+  vs `Error` / `LogicException` split keeps loud; the defect is the parser emitting a non-recoverable error,
+  so it is fixed at the source. (b) Detect the overflow afterwards with `is_int($cents)` — rejected: PHPStan
+  at level max models `int * int` as `int` and flags the check as an always-true tautology, and guarding
+  before the unsafe multiply is clearer than inspecting its aftermath. (c) Bound the digits in the regex
+  (`\d{1,3}`) — equivalent and considered, but an explicit guard with a comment documents *why* the bound
+  exists (overflow safety), which a bare quantifier hides.
+- **Consequences:** Every out-of-range numeric token now fails as a recoverable `InvalidCoin` (exit 2, the
+  session continues), with no cliff; the same fix covers the technician path (`SET-CHANGE`), which reuses the
+  parser. A regression test pins both a clearly-oversized token and the exact one-cent-past-`intdiv(PHP_INT_MAX,
+  100)` boundary. The money-conservation fuzz never surfaced this because it only generates valid coins — a
+  reminder that boundary parsing needs its own adversarial inputs.

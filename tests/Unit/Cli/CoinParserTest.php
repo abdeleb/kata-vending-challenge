@@ -60,6 +60,8 @@ final class CoinParserTest extends TestCase
             'non numeric'           => ['abc'],
             'empty'                 => [''],
             'surrounding spaces'    => [' 0.25 '],
+            'overflowing integer part'      => ['99999999999999999999'],
+            'one cent past the int cliff'   => ['92233720368547759'],
         ];
     }
 }
